@@ -1,0 +1,3 @@
+sudo hcitool lescan --duplicates
+sudo hcidump | grep -A1 7E:66 # Look for RSSI, smaller values are closer.
+
