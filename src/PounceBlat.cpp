@@ -3,6 +3,8 @@
 #include <iostream>
 #include <unistd.h>
 
+#include <spdlog/spdlog.h>
+
 PounceBlat::PounceBlat() : state_(ARMED) {
 }
 
@@ -13,7 +15,7 @@ void PounceBlat::transitionTo(State s) {
 		switch (s) {
 			case RUNNING:
 				relay_.set(true);
-				eq_.setTimeout(std::chrono::seconds(5));
+				eq_.setTimeout(std::chrono::seconds(5)); // FIXME: configurable runtime?
 			break;
 			case ARMED:
 				relay_.set(false);
@@ -29,6 +31,8 @@ void PounceBlat::run() {
 
 	while (1) {
 		Event e = eq_.wait();
+
+		spdlog::debug("Received event {} in state {}", e, state_);
 
 		switch (state_) {
 			case ARMED:
