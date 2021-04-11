@@ -1,12 +1,16 @@
 #pragma once
 
-#include <Relay.h>
+#include "EventQueue.h"
+#include "Relay.h"
+#include "Sensor.h"
 
 class PounceBlat {
 	public:
-		PouceBlat() {}
+		PounceBlat();
 		void run();
 	private:
 		Relay relay_;
+		Sensor sensor_;
+		EventQueue eq_;
 };
 
