@@ -12,5 +12,9 @@ class PounceBlat {
 		Relay relay_;
 		Sensor sensor_;
 		EventQueue eq_;
+
+		enum State { ARMED, RUNNING } state_;
+
+		void transitionTo(State s);
 };
 

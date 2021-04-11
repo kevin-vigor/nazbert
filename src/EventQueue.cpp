@@ -10,10 +10,27 @@ int EventQueue::send(Event const& e) {
 }
 
 Event EventQueue::wait() {
+	Event e;
+	bool timeout = false;
+	static constexpr Event timeoutEvent { .type = Event::TIMEOUT };
 	std::unique_lock<std::mutex> lock(lock_);
-	cv_.wait(lock, [this] () { return !this->queue_.empty(); });
-	Event e = std::move(queue_.front());
-	queue_.pop_front();
+	if (this->queue_.empty()) {
+		if (deadline_) {
+			timeout = !cv_.wait_until(lock, 
+						 *deadline_,
+						  [this] () { return !this->queue_.empty(); });
+		} else {
+			cv_.wait(lock, 
+				[this] () { return !this->queue_.empty(); });
+		} 
+	}
+
+	if (timeout) {
+		e = timeoutEvent;
+	} else {
+		e = std::move(queue_.front());
+		queue_.pop_front();
+	}
 	return e;
 }
 

@@ -3,7 +3,25 @@
 #include <iostream>
 #include <unistd.h>
 
-PounceBlat::PounceBlat() {
+PounceBlat::PounceBlat() : state_(ARMED) {
+}
+
+void PounceBlat::transitionTo(State s) {
+	if (s != state_) {
+		eq_.clearTimeout();
+		state_ = s;
+		switch (s) {
+			case RUNNING:
+				relay_.set(true);
+				eq_.setTimeout(std::chrono::seconds(5));
+			break;
+			case ARMED:
+				relay_.set(false);
+			default:
+				// nada
+			break;
+		}
+	}
 }
 
 void PounceBlat::run() {
@@ -12,14 +30,30 @@ void PounceBlat::run() {
 	while (1) {
 		Event e = eq_.wait();
 
-		switch (e.type) {
-			case Event::MOTION_DETECTED:
-				std::cout << "Motion detected!\n";
-				relay_.set(true);
-				::sleep(5);
-				relay_.set(false);
-				break;
-		}
+		switch (state_) {
+			case ARMED:
+				switch (e.type) {
+					case Event::MOTION_DETECTED:
+						std::cout << "Motion detected!\n";
+						relay_.set(true);
+						transitionTo(RUNNING);
+					break;
 
+					case Event::TIMEOUT:
+						std::cout << "Unexpected event.\n";
+					break;
+				}
+			break;
+
+			case RUNNING:
+				switch (e.type) {
+					case Event::MOTION_DETECTED:
+					case Event::TIMEOUT:
+						transitionTo(ARMED);
+					break;
+
+				}
+			break;
+		}
 	}
 }

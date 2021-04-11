@@ -25,7 +25,7 @@ void Sensor::monitor(EventQueue& eq) {
 		throw std::runtime_error("monitor can only be called once.");
 	}
 	monitorThread_ = std::thread([&eq, this]() {
-		const Event mdEvent { .type = Event::MOTION_DETECTED };
+		static constexpr Event mdEvent { .type = Event::MOTION_DETECTED };
 		while (!this->terminating_) {
 
 			if (this->line_.event_wait(::std::chrono::seconds(1))) {
