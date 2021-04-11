@@ -10,7 +10,7 @@
 
 class Event {
 	public:
-		enum { MOTION_DETECTED, TIMEOUT } type;
+		enum class Type { MOTION_DETECTED, TIMEOUT } type;
 };
 
 class EventQueue {
@@ -49,10 +49,10 @@ template <> struct fmt::formatter<Event> {
 	auto format(const Event& e, FormatContext& ctx) {
 		const char *name = "bogus";
 		switch (e.type) {
-			case Event::MOTION_DETECTED:
+			case Event::Type::MOTION_DETECTED:
 				name = "MOTION_DETECTED";
 				break;
-			case Event::TIMEOUT:
+			case Event::Type::TIMEOUT:
 				name = "TIMEOUT";
 				break;
 		}

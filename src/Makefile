@@ -1,13 +1,21 @@
 CXX = clang++
 CXXFLAGS ?= --std=c++17 -Wall -Werror
 
-OBJECTS = EventQueue.o Relay.o Sensor.o PounceBlat.o
+OBJECTS = EventQueue.o Relay.o Sensor.o PounceBlat.o main.o
 
-%.o: %.cpp %.h
-	$(CXX) $(CXXFLAGS) -c $< -o $@
-
-pounceblat: $(OBJECTS) main.cpp
-	$(CXX) $(CXXFLAGS) -o pounceblat main.cpp $(OBJECTS) -lgpiodcxx -lpthread
-
+DEP = $(OBJECTS:%.o=%.d)
 
 all: pounceblat
+
+-include $(DEP)
+
+clean:
+	rm -f $(OBJECTS) $(DEP)
+
+%.o: %.cpp
+	$(CXX) $(CXXFLAGS) -MMD -c $< -o $@
+
+pounceblat: $(OBJECTS)
+	$(CXX) $(CXXFLAGS) -o pounceblat $(OBJECTS) -lgpiodcxx -lpthread
+
+

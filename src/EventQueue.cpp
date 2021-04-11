@@ -12,7 +12,7 @@ int EventQueue::send(Event const& e) {
 Event EventQueue::wait() {
 	Event e;
 	bool timeout = false;
-	static constexpr Event timeoutEvent { .type = Event::TIMEOUT };
+	static constexpr Event timeoutEvent { .type = Event::Type::TIMEOUT };
 	std::unique_lock<std::mutex> lock(lock_);
 	if (this->queue_.empty()) {
 		if (deadline_) {
@@ -43,7 +43,7 @@ int main(void) {
 	EventQueue q;
 
 	std::thread generator([&q]() {
-			Event e { .type = Event::MOTION_DETECTED };
+			Event e { .type = Event::Type::MOTION_DETECTED };
 
 			for (int i = 0; i < 5; ++i) {
 				q.send(e);
@@ -53,7 +53,7 @@ int main(void) {
 
 	for (int i = 0; i < 5; ++i) {
 		Event e = q.wait();
-		assert(e.type == Event::MOTION_DETECTED);
+		assert(e.type == Event::Type::MOTION_DETECTED);
 		puts("Got one!");
 	}
 	generator.join();

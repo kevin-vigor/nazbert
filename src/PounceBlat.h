@@ -9,7 +9,8 @@ class PounceBlat {
 		PounceBlat();
 		void run();
 
-		enum State { ARMED, RUNNING };
+		enum class State { ARMED, RUNNING, GRACE };
+
 	private:
 		Relay relay_;
 		Sensor sensor_;
@@ -38,6 +39,9 @@ template <> struct fmt::formatter<PounceBlat::State> {
 				break;
 			case PounceBlat::State::RUNNING:
 				name = "RUNNING";
+				break;
+			case PounceBlat::State::GRACE:
+				name = "GRACE";
 				break;
 		}
 		return format_to(ctx.out(), "{}", name);
