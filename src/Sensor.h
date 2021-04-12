@@ -7,16 +7,15 @@
 #include <thread>
 
 class Sensor {
-	public:
-		Sensor();
-		~Sensor();
+public:
+  Sensor();
+  ~Sensor();
 
-		void monitor(EventQueue&);
+  void monitor(EventQueue &);
 
-	private:
-		std::thread monitorThread_;
-		bool terminating_;
-		::gpiod::chip chip_;
-		::gpiod::line line_;
-	
+private:
+  std::thread monitorThread_;
+  bool terminating_;
+  ::gpiod::chip chip_;
+  ::gpiod::line line_;
 };

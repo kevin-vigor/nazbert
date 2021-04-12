@@ -7,57 +7,51 @@
 #include <optional>
 #include <spdlog/spdlog.h>
 
-
 class Event {
-	public:
-		enum class Type { MOTION_DETECTED, TIMEOUT } type;
+public:
+  enum class Type { MOTION_DETECTED, TIMEOUT } type;
 };
 
 class EventQueue {
-	public:
-		EventQueue() {}
-		~EventQueue() {}
+public:
+  EventQueue() {}
+  ~EventQueue() {}
 
-		int send(Event const&);
-		Event wait();
+  void send(Event const &);
+  Event wait();
 
-		void setTimeout(std::chrono::milliseconds delay) {
-			deadline_ = std::chrono::steady_clock::now() +
-				delay;
-		}
-		void clearTimeout() {
-			deadline_ = std::nullopt;
-		}
+  void setTimeout(std::chrono::milliseconds delay) {
+    deadline_ = std::chrono::steady_clock::now() + delay;
+  }
+  void clearTimeout() { deadline_ = std::nullopt; }
 
-	private:
-		std::deque<Event> queue_;
-		std::mutex lock_;
-		std::condition_variable cv_;
-		std::optional<std::chrono::time_point<std::chrono::steady_clock>> deadline_;
-}; 
-
-template <> struct fmt::formatter<Event> {
-	constexpr auto parse(format_parse_context& ctx) {
-		auto it = ctx.begin();
-		if (*it != '}') {
-			throw format_error("invalid format");
-		}
-		return it;
-	}
-
-	template <typename FormatContext>
-	auto format(const Event& e, FormatContext& ctx) {
-		const char *name = "bogus";
-		switch (e.type) {
-			case Event::Type::MOTION_DETECTED:
-				name = "MOTION_DETECTED";
-				break;
-			case Event::Type::TIMEOUT:
-				name = "TIMEOUT";
-				break;
-		}
-		return format_to(ctx.out(), "{}", name);
-	}
+private:
+  std::deque<Event> queue_;
+  std::mutex lock_;
+  std::condition_variable cv_;
+  std::optional<std::chrono::time_point<std::chrono::steady_clock>> deadline_;
 };
 
+template <> struct fmt::formatter<Event> {
+  constexpr auto parse(format_parse_context &ctx) {
+    auto it = ctx.begin();
+    if (*it != '}') {
+      throw format_error("invalid format");
+    }
+    return it;
+  }
 
+  template <typename FormatContext>
+  auto format(const Event &e, FormatContext &ctx) {
+    const char *name = "bogus";
+    switch (e.type) {
+      case Event::Type::MOTION_DETECTED:
+        name = "MOTION_DETECTED";
+        break;
+      case Event::Type::TIMEOUT:
+        name = "TIMEOUT";
+        break;
+    }
+    return format_to(ctx.out(), "{}", name);
+  }
+};
