@@ -26,36 +26,32 @@ Scanner::~Scanner() {
   }
 }
 
-int Scanner::scan() {
-  constexpr int timeout = 5000;     // milliseconds, I think?
-
-  // Force scan disable - rude if there are other users, but whatev.
+void Scanner::disableScanning() {
   if (hci_le_set_scan_enable(
-        /*dev_id=*/hcidev_,
-        /*enable=*/0,
-        /*filter_duplicates=*/1,
-        /*to=*/timeout) < 0) {
-    // log but ignore: failure here does not affect validity of results AFAIK.
+          /*dev_id=*/hcidev_,
+          /*enable=*/0,
+          /*filter_duplicates=*/1,
+          /*to=*/0) < 0) {
+    // log but ignore errors: if we can enable it again later, that's cool.
     spdlog::warn("hci_le_set_scan_enable(0) failed: {}", strerror(errno));
   }
+}
 
-  int rc = hci_le_set_scan_parameters(
-    /*dev_id=*/hcidev_,
-    /*scan_type=*/0x01,             // ?? passive is 0, so I assume 1 is active?
-    /*interval=*/htobs(0x0010),     // ?? ripped from hcitool.
-    /*window=*/htobs(0x0010),       // ?? ripped from hcitool.
-    /*own_type=*/LE_PUBLIC_ADDRESS, // LE_RANDOM_ADDRESS is alternative.
-    /*filter=*/0x00,                // ?? 1 is "Whitelist"
-    /*to=*/timeout);
-  if (rc < 0) {
-    spdlog::warn("hci_le_set_scan_parameters failed: {}", strerror(errno));
-    return rc;
-  }
-  rc = hci_le_set_scan_enable(
-        /*dev_id=*/hcidev_,
-        /*enable=*/1,
-        /*filter_duplicates=*/1,
-        /*to=*/timeout);
+int Scanner::scan() {
+  constexpr int timeout = 5000; // milliseconds, I think?
+                                // FIXME: what does this timeout even control??
+
+  // If we crashed or something and scanning is left enabled, nothing
+  // works until we disable it. So just unconditionally force it off
+  // here. Ignore any errors
+  disableScanning();
+
+  // Now we can enable scanning.
+  int rc = hci_le_set_scan_enable(
+      /*dev_id=*/hcidev_,
+      /*enable=*/1,
+      /*filter_duplicates=*/1,
+      /*to=*/timeout);
   if (rc < 0) {
     spdlog::warn("hci_le_set_scan_enable(1) failed: {}", strerror(errno));
     return rc;
@@ -67,14 +63,7 @@ int Scanner::scan() {
 
   spdlog::info("Done scanning for BLE devices.");
 
-  if (hci_le_set_scan_enable(
-        /*dev_id=*/hcidev_,
-        /*enable=*/0,
-        /*filter_duplicates=*/1,
-        /*to=*/timeout) < 0) {
-    // log but ignore: failure here does not affect validity of results AFAIK.
-    spdlog::warn("hci_le_set_scan_enable(0) failed: {}", strerror(errno));
-  }
+  disableScanning();
 
   return 0;
 }
@@ -82,32 +71,34 @@ int Scanner::scan() {
 int Scanner::checkAdvertisingDevices() {
   struct hci_filter originalFilter, newFilter;
   socklen_t originalFilterLen;
-  
-  if (getsockopt(hcidev_, SOL_HCI, HCI_FILTER, &originalFilter, &originalFilterLen) < 0) {
+  int rc;
+
+  if (getsockopt(hcidev_, SOL_HCI, HCI_FILTER, &originalFilter,
+                 &originalFilterLen) < 0) {
     spdlog::warn("Cannot get HCI filter: {}", strerror(errno));
     return -1;
   }
 
   hci_filter_clear(&newFilter);
-	hci_filter_set_ptype(HCI_EVENT_PKT, &newFilter);
-	hci_filter_set_event(EVT_LE_META_EVENT, &newFilter);
+  hci_filter_set_ptype(HCI_EVENT_PKT, &newFilter);
+  hci_filter_set_event(EVT_LE_META_EVENT, &newFilter);
 
-  if (setsockopt(hcidev_, SOL_HCI, HCI_FILTER, &newFilter, sizeof(newFilter)) < 0) {
+  if (setsockopt(hcidev_, SOL_HCI, HCI_FILTER, &newFilter, sizeof(newFilter)) <
+      0) {
     spdlog::warn("Cannot set HCI filter: {}", strerror(errno));
     return -1;
   }
 
   struct timeval timeout;
-  timeout.tv_sec = 10; // FIXME!! configurable!!
+  timeout.tv_sec = 10; // FIXME!! Make configurable!!
   timeout.tv_usec = 0;
   fd_set readFds;
   FD_ZERO(&readFds);
   FD_SET(hcidev_, &readFds);
 
-  int rc;
   while ((rc = select(hcidev_ + 1, &readFds, nullptr, nullptr, &timeout)) > 0) {
     uint8_t buffer[HCI_MAX_EVENT_SIZE];
-    ssize_t len;
+    ssize_t len, needed = 0;
 
     len = read(hcidev_, buffer, sizeof(buffer));
 
@@ -121,47 +112,103 @@ int Scanner::checkAdvertisingDevices() {
       continue;
     }
 
-    if (len <= HCI_EVENT_HDR_SIZE + sizeof(evt_le_meta_event)) {
-      spdlog::warn("Read short packet {} from HCI dev.", len);
+    // Parsing code optimized for sanity checking and readability.
+    // It would be more efficient to make sure that we had enough data
+    // for a type + hci_event_hdr + evt_le_meta_event + le_advertising_info
+    // up front.
+
+    // The first byte is a packet type. Doesn't seem to be an associated
+    // structure in bluetooth headers, which I guess is OK since it is just
+    // a byte.
+
+    needed = 1;
+    if (len < needed) {
+      spdlog::warn("Read short packet from HCI device: got {}, needed {} for "
+                   "packet type",
+                   len, needed);
       continue;
     }
- 
-    evt_le_meta_event *meta =
-      (evt_le_meta_event*)(&buffer[1 + HCI_EVENT_HDR_SIZE]);
 
+    const uint8_t *type = buffer;
+    if (*type != HCI_EVENT_PKT) {
+      spdlog::info("Got non-packet type {} from HCI device.", *type);
+      continue;
+    }
+
+    needed += HCI_EVENT_HDR_SIZE;
+    if (len < needed) {
+      spdlog::warn("Read short packet from HCI device: got {}, needed {} for "
+                   "hc_event_hdr",
+                   len, needed);
+      continue;
+    }
+
+    const hci_event_hdr *event_hdr = (hci_event_hdr *)(type + 1);
+    if (event_hdr->evt != EVT_LE_META_EVENT) {
+      spdlog::info("Got non-meta event from HCI device: {}", event_hdr->evt);
+      continue;
+    }
+
+    needed += EVT_LE_META_EVENT_SIZE;
+    if (len < needed) {
+      spdlog::warn("Read short packet{} from HCI device, got {}, needed {} for "
+                   "evt_le_meta_event.",
+                   len, needed);
+      continue;
+    }
+
+    const evt_le_meta_event *meta = (evt_le_meta_event *)(event_hdr + 1);
     if (meta->subevent != EVT_LE_ADVERTISING_REPORT) {
-      spdlog::info("subevent is {} not {}", meta->subevent, EVT_LE_ADVERTISING_REPORT);
+      spdlog::info("Got non-advertising report meta event {}", meta->subevent);
       continue;
     }
- 
-    le_advertising_info *info = (le_advertising_info *) (meta->data + 1);
 
-      char addr[18];
-      char name[30];
+    needed += LE_ADVERTISING_INFO_SIZE + 1;
+    if (len < needed) {
+      spdlog::warn("Read short packet{} from HCI device, got {}, needed {} for "
+                   "le_advertising_info.",
+                   len, needed);
+      continue;
+    }
 
-      memset(name, 0, sizeof(name));
+    // There is a mystery byte between evt_le_meta_event and
+    // le_advertising_info, I have no idea  what it is. Hence the "meta->data +
+    // 1" rather than "meta + 1".
+    const le_advertising_info *info = (le_advertising_info *)(meta->data + 1);
 
-      ba2str(&info->bdaddr, addr);
+    // Can't find any documentation to support this, but the bluez
+    // ./tools/parser/hci.c code and experiment show that the RSSI is
+    // always in a single byte trailing the variable length advertising info.
+    needed += info->length + 1;
+    if (len < needed) {
+      spdlog::warn("Read short packet from HCI device, got {}, needed {} for "
+                   "trailing RSSI (adv len = {}).",
+                   len, needed, info->length);
+      continue;
+    }
 
-      int8_t rssi = (int8_t)info->data[info->length];
+    const int8_t rssi = (int8_t)info->data[info->length];
 
-      printf("I see %s with info len %d, rssi = %d??\n", 
-            addr, (int)info->length, (int) rssi);
-    
+    spdlog::info("Need len >= {} got {} rssi byte {} mystery byte {}", needed,
+                 len, info->data[info->length], meta->data[0]);
+
+    char addr[18];
+    ba2str(&info->bdaddr, addr);
+
+    spdlog::info("Device {} rssi {}.\n", addr, (int)rssi);
   }
 
   if (rc < 0) {
     spdlog::warn("select() failed: {}", strerror(errno));
   }
 
-  
-  if (setsockopt(hcidev_, SOL_HCI, HCI_FILTER, &originalFilter, originalFilterLen) < 0) {
+  if (setsockopt(hcidev_, SOL_HCI, HCI_FILTER, &originalFilter,
+                 originalFilterLen) < 0) {
     spdlog::warn("Cannot restore HCI filter: {}", strerror(errno));
   }
 
-  return rc; 
+  return rc;
 }
-
 
 #ifdef SCANNER_TEST
 int main(void) {
@@ -169,4 +216,3 @@ int main(void) {
   scanner.scan();
 }
 #endif
-
