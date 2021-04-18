@@ -1,3 +1,5 @@
+F1:15:32:5B:7E:66 -> test tile.
+
 sudo hcitool lescan --duplicates
 sudo hcidump | grep -A1 7E:66 # Look for RSSI, smaller values are closer.
 

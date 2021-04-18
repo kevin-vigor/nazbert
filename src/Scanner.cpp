@@ -28,6 +28,17 @@ Scanner::~Scanner() {
 
 int Scanner::scan() {
   constexpr int timeout = 5000;     // milliseconds, I think?
+
+  // Force scan disable - rude if there are other users, but whatev.
+  if (hci_le_set_scan_enable(
+        /*dev_id=*/hcidev_,
+        /*enable=*/0,
+        /*filter_duplicates=*/1,
+        /*to=*/timeout) < 0) {
+    // log but ignore: failure here does not affect validity of results AFAIK.
+    spdlog::warn("hci_le_set_scan_enable(0) failed: {}", strerror(errno));
+  }
+
   int rc = hci_le_set_scan_parameters(
     /*dev_id=*/hcidev_,
     /*scan_type=*/0x01,             // ?? passive is 0, so I assume 1 is active?
@@ -86,16 +97,15 @@ int Scanner::checkAdvertisingDevices() {
     return -1;
   }
 
-
   struct timeval timeout;
-  timeout.tv_sec = 5; // FIXME!! configurable!!
+  timeout.tv_sec = 10; // FIXME!! configurable!!
   timeout.tv_usec = 0;
   fd_set readFds;
   FD_ZERO(&readFds);
   FD_SET(hcidev_, &readFds);
 
   int rc;
-  while ((rc = select(1, &readFds, nullptr, nullptr, &timeout)) > 0) {
+  while ((rc = select(hcidev_ + 1, &readFds, nullptr, nullptr, &timeout)) > 0) {
     uint8_t buffer[HCI_MAX_EVENT_SIZE];
     ssize_t len;
 
@@ -111,11 +121,16 @@ int Scanner::checkAdvertisingDevices() {
       continue;
     }
 
-    assert(len > HCI_EVENT_HDR_SIZE + sizeof(evt_le_meta_event));
+    if (len <= HCI_EVENT_HDR_SIZE + sizeof(evt_le_meta_event)) {
+      spdlog::warn("Read short packet {} from HCI dev.", len);
+      continue;
+    }
  
-    evt_le_meta_event *meta = (evt_le_meta_event*)&buffer[1 + HCI_EVENT_HDR_SIZE];
+    evt_le_meta_event *meta =
+      (evt_le_meta_event*)(&buffer[1 + HCI_EVENT_HDR_SIZE]);
 
     if (meta->subevent != EVT_LE_ADVERTISING_REPORT) {
+      spdlog::info("subevent is {} not {}", meta->subevent, EVT_LE_ADVERTISING_REPORT);
       continue;
     }
  
@@ -128,7 +143,10 @@ int Scanner::checkAdvertisingDevices() {
 
       ba2str(&info->bdaddr, addr);
 
-      printf("I see %s!!\n", addr);
+      int8_t rssi = (int8_t)info->data[info->length];
+
+      printf("I see %s with info len %d, rssi = %d??\n", 
+            addr, (int)info->length, (int) rssi);
     
   }
 
@@ -137,11 +155,9 @@ int Scanner::checkAdvertisingDevices() {
   }
 
   
-
   if (setsockopt(hcidev_, SOL_HCI, HCI_FILTER, &originalFilter, originalFilterLen) < 0) {
     spdlog::warn("Cannot restore HCI filter: {}", strerror(errno));
   }
-
 
   return rc; 
 }
