@@ -163,39 +163,44 @@ int Scanner::checkAdvertisingDevices() {
       continue;
     }
 
-    needed += LE_ADVERTISING_INFO_SIZE + 1;
+    // There is a single byte following the evt_le_meta_event which is the
+    // number of following le_advertising_info structures.
+    needed += 1;
     if (len < needed) {
       spdlog::warn("Read short packet{} from HCI device, got {}, needed {} for "
-                   "le_advertising_info.",
+                   "le_advertising_info count.",
                    len, needed);
       continue;
     }
 
-    // There is a mystery byte between evt_le_meta_event and
-    // le_advertising_info, I have no idea  what it is. Hence the "meta->data +
-    // 1" rather than "meta + 1".
-    const le_advertising_info *info = (le_advertising_info *)(meta->data + 1);
+    const uint8_t *numReports = (uint8_t *)(meta + 1);
+    const uint8_t *nextReport = (numReports + 1);
+    for (auto i = 0; i < *numReports; ++i) {
+      needed += LE_ADVERTISING_INFO_SIZE;
+      if (len < needed) {
+        spdlog::warn(
+            "Read short packet{} from HCI device, got {}, needed {} for "
+            "le_advertising_info #{} header.",
+            len, needed, i);
+        break;
+      }
+      const le_advertising_info *info = (le_advertising_info *)nextReport;
+      needed += info->length + 1; // +1 for trailing RSSI byte.
+      if (len < needed) {
+        spdlog::warn(
+            "Read short packet{} from HCI device, got {}, needed {} for "
+            "le_advertising_info #{} body with length {}.",
+            len, needed, i, info->length);
+        break;
+      }
+      const int8_t rssi = (int8_t)info->data[info->length];
+      char addr[18];
+      ba2str(&info->bdaddr, addr);
 
-    // Can't find any documentation to support this, but the bluez
-    // ./tools/parser/hci.c code and experiment show that the RSSI is
-    // always in a single byte trailing the variable length advertising info.
-    needed += info->length + 1;
-    if (len < needed) {
-      spdlog::warn("Read short packet from HCI device, got {}, needed {} for "
-                   "trailing RSSI (adv len = {}).",
-                   len, needed, info->length);
-      continue;
+      spdlog::info("Device {} rssi {}.", addr, (int)rssi);
+
+      nextReport += LE_ADVERTISING_INFO_SIZE + info->length + 1;
     }
-
-    const int8_t rssi = (int8_t)info->data[info->length];
-
-    spdlog::info("Need len >= {} got {} rssi byte {} mystery byte {}", needed,
-                 len, info->data[info->length], meta->data[0]);
-
-    char addr[18];
-    ba2str(&info->bdaddr, addr);
-
-    spdlog::info("Device {} rssi {}.\n", addr, (int)rssi);
   }
 
   if (rc < 0) {
