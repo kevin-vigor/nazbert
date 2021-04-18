@@ -47,7 +47,19 @@ int Scanner::scan() {
   disableScanning();
 
   // Now we can enable scanning.
-  int rc = hci_le_set_scan_enable(
+  int rc = hci_le_set_scan_parameters(
+      /*dev_id=*/hcidev_,
+      /*scan_type=*/0x01,         // ?? passive is 0, so I assume 1 is active?
+      /*interval=*/htobs(0x0010), // ?? ripped from hcitool.
+      /*window=*/htobs(0x0010),   // ?? ripped from hcitool.
+      /*own_type=*/LE_PUBLIC_ADDRESS, // LE_RANDOM_ADDRESS is alternative.
+      /*filter=*/0x00,                // ?? 1 is "Whitelist"
+      /*to=*/timeout);
+  if (rc < 0) {
+    spdlog::warn("hci_le_set_scan_parameters failed: {}", strerror(errno));
+    return rc;
+  }
+  rc = hci_le_set_scan_enable(
       /*dev_id=*/hcidev_,
       /*enable=*/1,
       /*filter_duplicates=*/1,
