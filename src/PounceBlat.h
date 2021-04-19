@@ -2,19 +2,21 @@
 
 #include "EventQueue.h"
 #include "Relay.h"
+#include "Scanner.h"
 #include "Sensor.h"
 
 class PounceBlat {
 public:
-  PounceBlat();
+  explicit PounceBlat(std::vector<std::string> blessedDevices);
   void run();
 
-  enum class State { ARMED, RUNNING, GRACE };
+  enum class State { ARMED, SCANNING, RUNNING, GRACE };
 
 private:
   Relay relay_;
   Sensor sensor_;
   EventQueue eq_;
+  Scanner scanner_;
 
   State state_;
 
@@ -36,6 +38,9 @@ template <> struct fmt::formatter<PounceBlat::State> {
     switch (s) {
       case PounceBlat::State::ARMED:
         name = "ARMED";
+        break;
+      case PounceBlat::State::SCANNING:
+        name = "SCANNING";
         break;
       case PounceBlat::State::RUNNING:
         name = "RUNNING";

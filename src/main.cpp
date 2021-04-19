@@ -27,7 +27,9 @@ int main(int argc, char *argv[]) {
 
   spdlog::info("Here starts blatting!");
 
-  PounceBlat blatter;
+  std::vector<std::string> blessedDevices;
+  blessedDevices.push_back("F1:15:32:5B:7E:66");
+  PounceBlat blatter(blessedDevices);
 
   blatter.run();
 

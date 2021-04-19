@@ -9,7 +9,7 @@
 
 class Event {
 public:
-  enum class Type { MOTION_DETECTED, TIMEOUT } type;
+  enum class Type { MOTION_DETECTED, NAZBERT_DETECTED, TIMEOUT } type;
 };
 
 class EventQueue {
@@ -50,6 +50,9 @@ template <> struct fmt::formatter<Event> {
         break;
       case Event::Type::TIMEOUT:
         name = "TIMEOUT";
+        break;
+      case Event::Type::NAZBERT_DETECTED:
+        name = "NAZBERT_DETECTED";
         break;
     }
     return format_to(ctx.out(), "{}", name);

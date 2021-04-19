@@ -256,6 +256,16 @@ int Scanner::checkAdvertisingDevices() {
   return rc;
 }
 
+int Scanner::startScanning(EventQueue &) {
+  spdlog::info("Pretend I started scanning here.");
+  return 0;
+}
+
+int Scanner::stopScanning() {
+  spdlog::info("Pretend I stopped scanning here.");
+  return 0;
+}
+
 #ifdef SCANNER_TEST
 int main(void) {
   spdlog::set_level(spdlog::level::debug);
