@@ -9,7 +9,23 @@
 
 #include "Scanner.h"
 
-Scanner::Scanner() {
+Scanner::Scanner(std::vector<std::string> const &blessedDevices,
+                 unsigned timeoutSeconds)
+    : timeoutSeconds_(timeoutSeconds) {
+
+  for (const auto &addressStr : blessedDevices) {
+    bdaddr_t addr;
+
+    if (str2ba(addressStr.c_str(), &addr)) {
+      spdlog::error("Invalid bluetooth device address {}", addressStr);
+      throw std::runtime_error("Invalid bluetooth device address.");
+    }
+
+    blessedDevices_.push_back(addr);
+
+    spdlog::debug("Registered blessed device {}", addressStr);
+  }
+
   // Get the default HCI device. If we had more than one,
   // this would have to be more clever.
   int dev_id = hci_get_route(NULL);
@@ -30,7 +46,7 @@ void Scanner::disableScanning() {
   if (hci_le_set_scan_enable(
           /*dev_id=*/hcidev_,
           /*enable=*/0,
-          /*filter_duplicates=*/1,
+          /*filter_duplicates=*/0,
           /*to=*/0) < 0) {
     // log but ignore errors: if we can enable it again later, that's cool.
     spdlog::warn("hci_le_set_scan_enable(0) failed: {}", strerror(errno));
@@ -38,8 +54,9 @@ void Scanner::disableScanning() {
 }
 
 int Scanner::scan() {
-  constexpr int timeout = 5000; // milliseconds, I think?
-                                // FIXME: what does this timeout even control??
+  const int timeoutMs =
+      timeoutSeconds_ * 1000; // milliseconds.
+                              // FIXME: what does this timeout even control??
 
   // If we crashed or something and scanning is left enabled, nothing
   // works until we disable it. So just unconditionally force it off
@@ -54,7 +71,7 @@ int Scanner::scan() {
       /*window=*/htobs(0x0010),   // ?? ripped from hcitool.
       /*own_type=*/LE_PUBLIC_ADDRESS, // LE_RANDOM_ADDRESS is alternative.
       /*filter=*/0x00,                // ?? 1 is "Whitelist"
-      /*to=*/timeout);
+      /*to=*/timeoutMs);
   if (rc < 0) {
     spdlog::warn("hci_le_set_scan_parameters failed: {}", strerror(errno));
     return rc;
@@ -62,8 +79,8 @@ int Scanner::scan() {
   rc = hci_le_set_scan_enable(
       /*dev_id=*/hcidev_,
       /*enable=*/1,
-      /*filter_duplicates=*/1,
-      /*to=*/timeout);
+      /*filter_duplicates=*/0,
+      /*to=*/timeoutMs);
   if (rc < 0) {
     spdlog::warn("hci_le_set_scan_enable(1) failed: {}", strerror(errno));
     return rc;
@@ -102,7 +119,7 @@ int Scanner::checkAdvertisingDevices() {
   }
 
   struct timeval timeout;
-  timeout.tv_sec = 10; // FIXME!! Make configurable!!
+  timeout.tv_sec = timeoutSeconds_ * 3;
   timeout.tv_usec = 0;
   fd_set readFds;
   FD_ZERO(&readFds);
@@ -205,11 +222,23 @@ int Scanner::checkAdvertisingDevices() {
             len, needed, i, info->length);
         break;
       }
+
       const int8_t rssi = (int8_t)info->data[info->length];
       char addr[18];
       ba2str(&info->bdaddr, addr);
 
-      spdlog::info("Device {} rssi {}.", addr, (int)rssi);
+      // spdlog::debug("Device {} rssi {}.", addr, (int)rssi);
+
+      for (const auto &bd : blessedDevices_) {
+        if (!bacmp(&bd, &info->bdaddr)) {
+          if (rssi > -50) { // FIXME: configurable!!
+            spdlog::info("Blessed device {} is in range with RSSI {}", addr,
+                         rssi);
+            // FIXME: do a thing!
+            break;
+          }
+        }
+      }
 
       nextReport += LE_ADVERTISING_INFO_SIZE + info->length + 1;
     }
@@ -229,7 +258,13 @@ int Scanner::checkAdvertisingDevices() {
 
 #ifdef SCANNER_TEST
 int main(void) {
-  Scanner scanner;
+  spdlog::set_level(spdlog::level::debug);
+
+  std::vector<std::string> blessedDevices;
+
+  blessedDevices.push_back("F1:15:32:5B:7E:66");
+
+  Scanner scanner(blessedDevices);
   scanner.scan();
 }
 #endif
