@@ -49,8 +49,7 @@ void Scanner::disableScanning() {
           /*enable=*/0,
           /*filter_duplicates=*/0,
           /*to=*/0) < 0) {
-    // log but ignore errors: if we can enable it again later, that's cool.
-    spdlog::warn("hci_le_set_scan_enable(0) failed: {}", strerror(errno));
+    spdlog::debug("hci_le_set_scan_enable(0) failed: {}", strerror(errno));
   }
 }
 
@@ -239,7 +238,7 @@ int Scanner::checkAdvertisingDevices(EventQueue &eq) {
       char addr[18];
       ba2str(&info->bdaddr, addr);
 
-      spdlog::debug("Device {} rssi {}.", addr, (int)rssi);
+      // spdlog::debug("Device {} rssi {}.", addr, (int)rssi);
 
       for (const auto &bd : blessedDevices_) {
         if (!bacmp(&bd, &info->bdaddr)) {
@@ -290,7 +289,7 @@ int Scanner::stopScanning() {
 #ifdef SCANNER_TEST
 #include <iostream>
 int main(void) {
-  spdlog::set_level(spdlog::level::debug);
+  // spdlog::set_level(spdlog::level::debug);
 
   std::vector<std::string> blessedDevices;
 
@@ -299,18 +298,24 @@ int main(void) {
   Scanner scanner(blessedDevices);
   EventQueue eq;
 
-  scanner.startScanning(eq);
-
   while (1) {
-    Event e = eq.wait();
-    switch (e.type) {
-      case Event::Type::NAZBERT_DETECTED:
-        std::cout << "Nazbert detected!\n";
-        break;
-      default:
-        std::cout << "WTF??\n";
-        break;
+    scanner.startScanning(eq);
+    bool gotNaz = false;
+
+    while (!gotNaz) {
+      Event e = eq.wait();
+      switch (e.type) {
+        case Event::Type::NAZBERT_DETECTED:
+          std::cout << "Nazbert detected!\n";
+          gotNaz = true;
+          break;
+        default:
+          std::cout << "WTF??\n";
+          break;
+      }
     }
+
+    scanner.stopScanning();
   }
 }
 #endif
