@@ -12,8 +12,6 @@ public:
                    unsigned timeoutSeconds = 5);
   ~Scanner();
 
-  int scan();
-
   int startScanning(EventQueue &); // Spin up a thread to scan for blessed
                                    // devices and post events when detected.
   int stopScanning(); // Kill the scan thread (synchronously, it is dead when
@@ -23,9 +21,13 @@ public:
 
 private:
   int hcidev_;
-  int checkAdvertisingDevices();
+  int checkAdvertisingDevices(EventQueue &);
   void disableScanning();
+  void scanThread(EventQueue &);
 
   std::vector<bdaddr_t> blessedDevices_;
   unsigned timeoutSeconds_;
+
+  std::thread scanThread_;
+  bool terminating_;
 };

@@ -35,7 +35,9 @@ void Sensor::monitor(EventQueue &eq) {
             eq.send(mdEvent);
             break;
           default:
-            throw std::runtime_error("Unexpected event!");
+            spdlog::error("Unexpected GPIO event {} received.",
+                          (int)e.event_type);
+            throw std::runtime_error("Unexpected GPIO event.");
             break;
         }
       }

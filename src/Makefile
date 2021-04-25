@@ -19,4 +19,5 @@ clean:
 pounceblat: $(OBJECTS)
 	$(CXX) $(CXXFLAGS) -o pounceblat $(OBJECTS) -lgpiodcxx -lpthread -lbluetooth
 
-
+scanner-test: EventQueue.o Scanner.cpp
+	$(CXX) $(CXXFLAGS) -o scanner-test -DSCANNER_TEST Scanner.cpp EventQueue.o -lpthread -lbluetooth

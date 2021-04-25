@@ -23,8 +23,8 @@ void PounceBlat::transitionTo(State s) {
         eq_.setTimeout(std::chrono::seconds(5)); // FIXME: configurable runtime?
         break;
       case State::RUNNING:
-        // NB: we do *not( stop scanning on this transition, so that if Nazbert
-        // wanders into range while runnign we detect it and halt.
+        // NB: we do *not* stop scanning on this transition, so that if Nazbert
+        // wanders into range while running we detect it and halt ASAP.
         relay_.set(true);
         eq_.setTimeout(std::chrono::seconds(5)); // FIXME: configurable runtime?
         break;

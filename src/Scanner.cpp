@@ -11,7 +11,7 @@
 
 Scanner::Scanner(std::vector<std::string> const &blessedDevices,
                  unsigned timeoutSeconds)
-    : timeoutSeconds_(timeoutSeconds) {
+    : timeoutSeconds_(timeoutSeconds), terminating_(false) {
 
   for (const auto &addressStr : blessedDevices) {
     bdaddr_t addr;
@@ -37,6 +37,7 @@ Scanner::Scanner(std::vector<std::string> const &blessedDevices,
 }
 
 Scanner::~Scanner() {
+  stopScanning();
   if (hcidev_ >= 0) {
     hci_close_dev(hcidev_);
   }
@@ -53,7 +54,7 @@ void Scanner::disableScanning() {
   }
 }
 
-int Scanner::scan() {
+void Scanner::scanThread(EventQueue &eq) {
   const int timeoutMs =
       timeoutSeconds_ * 1000; // milliseconds.
                               // FIXME: what does this timeout even control??
@@ -71,10 +72,10 @@ int Scanner::scan() {
       /*window=*/htobs(0x0010),   // ?? ripped from hcitool.
       /*own_type=*/LE_PUBLIC_ADDRESS, // LE_RANDOM_ADDRESS is alternative.
       /*filter=*/0x00,                // ?? 1 is "Whitelist"
-      /*to=*/timeoutMs);
+      /*to=*//*timeoutMs*/ 0);
   if (rc < 0) {
     spdlog::warn("hci_le_set_scan_parameters failed: {}", strerror(errno));
-    return rc;
+    return;
   }
   rc = hci_le_set_scan_enable(
       /*dev_id=*/hcidev_,
@@ -83,21 +84,20 @@ int Scanner::scan() {
       /*to=*/timeoutMs);
   if (rc < 0) {
     spdlog::warn("hci_le_set_scan_enable(1) failed: {}", strerror(errno));
-    return rc;
+    return;
   }
 
   spdlog::info("Scanning for BLE devices...");
 
-  rc = checkAdvertisingDevices();
+  rc = checkAdvertisingDevices(eq);
 
   spdlog::info("Done scanning for BLE devices.");
 
   disableScanning();
-
-  return 0;
 }
 
-int Scanner::checkAdvertisingDevices() {
+int Scanner::checkAdvertisingDevices(EventQueue &eq) {
+  static constexpr Event ndEvent{.type = Event::Type::NAZBERT_DETECTED};
   struct hci_filter originalFilter, newFilter;
   socklen_t originalFilterLen;
   int rc;
@@ -119,15 +119,27 @@ int Scanner::checkAdvertisingDevices() {
   }
 
   struct timeval timeout;
-  timeout.tv_sec = timeoutSeconds_ * 3;
+  timeout.tv_sec = 1; // ghetto timeout to wake and poll terminating flag.
   timeout.tv_usec = 0;
   fd_set readFds;
   FD_ZERO(&readFds);
   FD_SET(hcidev_, &readFds);
 
-  while ((rc = select(hcidev_ + 1, &readFds, nullptr, nullptr, &timeout)) > 0) {
+  while ((rc = select(hcidev_ + 1, &readFds, nullptr, nullptr, &timeout)) >=
+         0) {
     uint8_t buffer[HCI_MAX_EVENT_SIZE];
     ssize_t len, needed = 0;
+
+    if (terminating_) {
+      break;
+    }
+
+    timeout.tv_sec = 1;
+    timeout.tv_usec = 0;
+
+    if (!rc) {
+      continue;
+    }
 
     len = read(hcidev_, buffer, sizeof(buffer));
 
@@ -227,14 +239,14 @@ int Scanner::checkAdvertisingDevices() {
       char addr[18];
       ba2str(&info->bdaddr, addr);
 
-      // spdlog::debug("Device {} rssi {}.", addr, (int)rssi);
+      spdlog::debug("Device {} rssi {}.", addr, (int)rssi);
 
       for (const auto &bd : blessedDevices_) {
         if (!bacmp(&bd, &info->bdaddr)) {
-          if (rssi > -50) { // FIXME: configurable!!
+          if (rssi > -70) { // FIXME: configurable!!
             spdlog::info("Blessed device {} is in range with RSSI {}", addr,
                          rssi);
-            // FIXME: do a thing!
+            eq.send(ndEvent);
             break;
           }
         }
@@ -256,17 +268,27 @@ int Scanner::checkAdvertisingDevices() {
   return rc;
 }
 
-int Scanner::startScanning(EventQueue &) {
-  spdlog::info("Pretend I started scanning here.");
+int Scanner::startScanning(EventQueue &eq) {
+  if (scanThread_.joinable()) {
+    spdlog::warn("Scanner already running.");
+    return -EBUSY;
+  }
+
+  terminating_ = false;
+  scanThread_ = std::thread([&eq, this] { this->scanThread(eq); });
   return 0;
 }
 
 int Scanner::stopScanning() {
-  spdlog::info("Pretend I stopped scanning here.");
+  if (scanThread_.joinable()) {
+    terminating_ = true;
+    scanThread_.join();
+  }
   return 0;
 }
 
 #ifdef SCANNER_TEST
+#include <iostream>
 int main(void) {
   spdlog::set_level(spdlog::level::debug);
 
@@ -275,6 +297,20 @@ int main(void) {
   blessedDevices.push_back("F1:15:32:5B:7E:66");
 
   Scanner scanner(blessedDevices);
-  scanner.scan();
+  EventQueue eq;
+
+  scanner.startScanning(eq);
+
+  while (1) {
+    Event e = eq.wait();
+    switch (e.type) {
+      case Event::Type::NAZBERT_DETECTED:
+        std::cout << "Nazbert detected!\n";
+        break;
+      default:
+        std::cout << "WTF??\n";
+        break;
+    }
+  }
 }
 #endif
