@@ -1,12 +1,32 @@
 #include "Controller.h"
 #include <spdlog/spdlog.h>
 
-Controller::Controller() {}
+Controller::Controller() : terminating_(false) {}
 
 Controller::~Controller() {}
 
 void Controller::run(EventQueue &eq) {
-  // FIXME!
+  if (controlThread_.joinable()) {
+    spdlog::warn("Already running.");
+    return;
+  }
+
+  controlThread_ = std::thread([&eq, this] { this->controlThread(eq); });
+}
+
+void Controller::stop() {
+  if (controlThread_.joinable()) {
+    terminating_ = true;
+    controlThread_.join();
+  }
+}
+
+void Controller::controlThread(EventQueue &eq) {
+  static constexpr Event ndEvent{.type = Event::Type::NAZBERT_DETECTED};
+  while (!terminating_) {
+    eq.send(ndEvent);
+    ::sleep(1);
+  }
 }
 
 #ifdef CONTROL_TEST
