@@ -49,7 +49,7 @@ class MyServer(BaseHTTPRequestHandler):
         self.wfile.write(html.format(status).encode("utf-8"))
 
 if __name__ == '__main__':
-    http_server = HTTPServer((host_name, host_port), MyServer)
+    http_server = HTTPServer(("", host_port), MyServer)
     print("Server Starts - %s:%s" % (host_name, host_port))
 
     try:
