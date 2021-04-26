@@ -10,7 +10,7 @@ public:
   explicit PounceBlat(std::vector<std::string> blessedDevices);
   void run();
 
-  enum class State { ARMED, SCANNING, RUNNING, GRACE };
+  enum class State { ARMED, DISABLED, GRACE, RUNNING, SCANNING };
 
 private:
   Relay relay_;
@@ -39,14 +39,17 @@ template <> struct fmt::formatter<PounceBlat::State> {
       case PounceBlat::State::ARMED:
         name = "ARMED";
         break;
-      case PounceBlat::State::SCANNING:
-        name = "SCANNING";
+      case PounceBlat::State::DISABLED:
+        name = "DISABLED";
+        break;
+      case PounceBlat::State::GRACE:
+        name = "GRACE";
         break;
       case PounceBlat::State::RUNNING:
         name = "RUNNING";
         break;
-      case PounceBlat::State::GRACE:
-        name = "GRACE";
+      case PounceBlat::State::SCANNING:
+        name = "SCANNING";
         break;
     }
     return format_to(ctx.out(), "{}", name);

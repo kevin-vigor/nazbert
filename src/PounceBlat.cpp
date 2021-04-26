@@ -18,9 +18,14 @@ void PounceBlat::transitionTo(State s) {
         relay_.set(false);       // Should be a no-op... but can't hurt, eh?
         scanner_.stopScanning(); // likewise.
         break;
-      case State::SCANNING:
-        scanner_.startScanning(eq_);
-        eq_.setTimeout(std::chrono::seconds(5)); // FIXME: configurable runtime?
+      case State::DISABLED:
+        relay_.set(false);       // Should be a no-op... but can't hurt, eh?
+        scanner_.stopScanning(); // likewise.
+        break;
+      case State::GRACE:
+        relay_.set(false);
+        scanner_.stopScanning();
+        eq_.setTimeout(std::chrono::seconds(10));
         break;
       case State::RUNNING:
         // NB: we do *not* stop scanning on this transition, so that if Nazbert
@@ -28,10 +33,9 @@ void PounceBlat::transitionTo(State s) {
         relay_.set(true);
         eq_.setTimeout(std::chrono::seconds(5)); // FIXME: configurable runtime?
         break;
-      case State::GRACE:
-        relay_.set(false);
-        scanner_.stopScanning();
-        eq_.setTimeout(std::chrono::seconds(10));
+      case State::SCANNING:
+        scanner_.startScanning(eq_);
+        eq_.setTimeout(std::chrono::seconds(5)); // FIXME: configurable runtime?
         break;
     }
   } else {
@@ -51,15 +55,19 @@ void PounceBlat::run() {
     switch (state_) {
       case State::ARMED:
         switch (e.type) {
+          case Event::Type::DISABLE:
+            transitionTo(State::DISABLED);
+            break;
+          case Event::Type::ENABLE:
+            spdlog::warn("Enable ignored in {} state.", state_);
+            break;
           case Event::Type::MOTION_DETECTED:
             spdlog::info("Motion detected!");
             transitionTo(State::SCANNING);
             break;
-
           case Event::Type::TIMEOUT:
             spdlog::warn("Unexpected timeout event in ARMED state.");
             break;
-
           case Event::Type::NAZBERT_DETECTED:
             spdlog::warn("Unexpected Nazbert in ARMED state.");
             transitionTo(State::GRACE);
@@ -67,27 +75,46 @@ void PounceBlat::run() {
         }
         break;
 
-      case State::SCANNING:
+      case State::DISABLED:
         switch (e.type) {
+          case Event::Type::ENABLE:
+            transitionTo(State::ARMED);
+            break;
+          case Event::Type::DISABLE:
           case Event::Type::MOTION_DETECTED:
-            spdlog::info("Motion ignored in scanning state.");
-            break;
-
           case Event::Type::TIMEOUT:
-            spdlog::info("Scanning timed out, game on!");
-            transitionTo(State::RUNNING);
-            break;
-
           case Event::Type::NAZBERT_DETECTED:
-            spdlog::warn(
-                "Nazbert detected in SCANNING state, hold yer horses!");
-            transitionTo(State::GRACE);
+            spdlog::debug("Event {} ignored in {} state.", e, state_);
+            break;
+        }
+        break;
+
+      case State::GRACE:
+        switch (e.type) {
+          case Event::Type::DISABLE:
+            transitionTo(State::DISABLED);
+            break;
+          case Event::Type::ENABLE:
+            spdlog::warn("Enable ignored in {} state.", state_);
+            break;
+          case Event::Type::MOTION_DETECTED:
+          case Event::Type::NAZBERT_DETECTED:
+            spdlog::debug("Event {} ignored in GRACE state.", e);
+            break;
+          case Event::Type::TIMEOUT:
+            transitionTo(State::ARMED);
             break;
         }
         break;
 
       case State::RUNNING:
         switch (e.type) {
+          case Event::Type::DISABLE:
+            transitionTo(State::DISABLED);
+            break;
+          case Event::Type::ENABLE:
+            spdlog::warn("Enable ignored in {} state.", state_);
+            break;
           case Event::Type::MOTION_DETECTED:
             spdlog::debug("Motion ignored, already in RUNNING state.");
             break;
@@ -101,14 +128,25 @@ void PounceBlat::run() {
         }
         break;
 
-      case State::GRACE:
+      case State::SCANNING:
         switch (e.type) {
+          case Event::Type::DISABLE:
+            transitionTo(State::DISABLED);
+            break;
+          case Event::Type::ENABLE:
+            spdlog::warn("Enable ignored in {} state.", state_);
+            break;
           case Event::Type::MOTION_DETECTED:
-          case Event::Type::NAZBERT_DETECTED:
-            spdlog::debug("Event {} ignored in GRACE state.", e);
+            spdlog::info("Motion ignored in scanning state.");
             break;
           case Event::Type::TIMEOUT:
-            transitionTo(State::ARMED);
+            spdlog::info("Scanning timed out, game on!");
+            transitionTo(State::RUNNING);
+            break;
+          case Event::Type::NAZBERT_DETECTED:
+            spdlog::warn(
+                "Nazbert detected in SCANNING state, hold yer horses!");
+            transitionTo(State::GRACE);
             break;
         }
         break;
