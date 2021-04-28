@@ -15,6 +15,13 @@ def blatterCommand(cmd):
     except Exception as e:
         print(f"Error sending command to pouceblat: {e}") 
 
+def blatterStatus():
+    try:
+        with open("/dev/shm/pounceblat.status", 'r') as status:
+            return status.read()
+    except Exception as e:
+        print(f"Error reading pouceblat status: {e}") 
+        return "Unknown."
 
 class MyServer(BaseHTTPRequestHandler):
     """ A special implementation of BaseHTTPRequestHander for reading data from
@@ -33,15 +40,15 @@ class MyServer(BaseHTTPRequestHandler):
         """ do_GET() can be tested using curl command 
             'curl http://server-ip-address:port' 
         """
-        html = '''
+
+
+        html = f'''
             <html>
             <body>
             <h1>Welcome to NAZBERT</h1>
+            <p>Status</p>
+            <pre>{blatterStatus()}</pre>            
             <p>Turn FLAMING DEATH: <a href="/on">On</a> <a href="/off">Off</a></p>
-            <div id="led-status"></div>
-            <script>
-                document.getElementById("led-status").innerHTML="{}";
-            </script>
             </body>
             </html>
         '''

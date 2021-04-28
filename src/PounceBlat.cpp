@@ -197,6 +197,11 @@ void PounceBlat::publishStats() {
     return;
   }
 
+  if (chmod(tmpName, 0444) == -1) {
+    spdlog::warn("Error chmoding temporary status file: {}", strerror(errno));
+    return;
+  }
+
   if (rename(tmpName, "/dev/shm/pounceblat.status") == -1) {
     spdlog::warn("Error renaming temporary stats file: {}", strerror(errno));
   }
