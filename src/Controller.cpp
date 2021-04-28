@@ -35,7 +35,7 @@ void Controller::stop() {
       spdlog::warn("Cannot open {} in controller shutdown: {}", gFifo,
                    strerror(errno));
     }
-    if (write(outFd, &c, 1) != 1) {
+    if (write(outFd, &cmd, 1) != 1) {
       spdlog::warn("Cannot write {} in controller shutdown: {}", gFifo,
                    strerror(errno));
     }

@@ -9,7 +9,13 @@
 
 class Event {
 public:
-  enum class Type { DISABLE, ENABLE, MOTION_DETECTED, NAZBERT_DETECTED, TIMEOUT } type;
+  enum class Type {
+    DISABLE,
+    ENABLE,
+    MOTION_DETECTED,
+    NAZBERT_DETECTED,
+    TIMEOUT
+  } type;
 };
 
 class EventQueue {

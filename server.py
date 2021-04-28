@@ -1,10 +1,19 @@
 #!/usr/bin/env python3
 import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
+import sys
 
 
 host_name = 'localhost'    # Change this to your Raspberry Pi IP address
 host_port = 8000
+
+def blatterCommand(cmd):
+    try:
+        with open("/dev/shm/pounceblat.fifo", 'wb', 0) as fifo:
+            fifo.write(cmd)
+            #print(b'D', file=fifo, end='')
+    except Exception as e:
+        print(f"Error sending command to pouceblat: {e}") 
 
 
 class MyServer(BaseHTTPRequestHandler):
@@ -26,7 +35,7 @@ class MyServer(BaseHTTPRequestHandler):
         """
         html = '''
             <html>
-            <body style="width:960px; margin: 20px auto;">
+            <body>
             <h1>Welcome to NAZBERT</h1>
             <p>Turn FLAMING DEATH: <a href="/on">On</a> <a href="/off">Off</a></p>
             <div id="led-status"></div>
@@ -41,11 +50,9 @@ class MyServer(BaseHTTPRequestHandler):
         if self.path=='/':
             pass
         elif self.path=='/on':
-            #GPIO.output(18, GPIO.HIGH)
-            status='DEATH is On'
+            blatterCommand(b'E') # enable
         elif self.path=='/off':
-            #GPIO.output(18, GPIO.LOW)
-            status='DEATH is Off'
+            blatterCommand(b'D') # disable
         self.wfile.write(html.format(status).encode("utf-8"))
 
 if __name__ == '__main__':

@@ -38,6 +38,7 @@ void PounceBlat::transitionTo(State s) {
         eq_.setTimeout(std::chrono::seconds(5)); // FIXME: configurable runtime?
         break;
     }
+    publishStats();
   } else {
     spdlog::warn(
         "Attempted to transition to state {} when already in that state.");
@@ -46,6 +47,9 @@ void PounceBlat::transitionTo(State s) {
 
 void PounceBlat::run() {
   sensor_.monitor(eq_);
+  controller_.run(eq_);
+
+  publishStats();
 
   while (1) {
     Event e = eq_.wait();
@@ -63,6 +67,7 @@ void PounceBlat::run() {
             break;
           case Event::Type::MOTION_DETECTED:
             spdlog::info("Motion detected!");
+            stats_.motion++;
             transitionTo(State::SCANNING);
             break;
           case Event::Type::TIMEOUT:
@@ -123,6 +128,7 @@ void PounceBlat::run() {
             break;
           case Event::Type::NAZBERT_DETECTED:
             spdlog::warn("Nazbert detected while running oh noes :(");
+            stats_.aborts++;
             transitionTo(State::GRACE);
             break;
         }
@@ -141,15 +147,57 @@ void PounceBlat::run() {
             break;
           case Event::Type::TIMEOUT:
             spdlog::info("Scanning timed out, game on!");
+            stats_.runs++;
             transitionTo(State::RUNNING);
             break;
           case Event::Type::NAZBERT_DETECTED:
             spdlog::warn(
                 "Nazbert detected in SCANNING state, hold yer horses!");
+            stats_.disallowed++;
             transitionTo(State::GRACE);
             break;
         }
         break;
     }
+  }
+}
+
+const char *PounceBlat::stateName(State s) {
+  switch (s) {
+    case PounceBlat::State::ARMED:
+      return "ARMED";
+    case PounceBlat::State::DISABLED:
+      return "DISABLED";
+    case PounceBlat::State::GRACE:
+      return "GRACE";
+    case PounceBlat::State::RUNNING:
+      return "RUNNING";
+    case PounceBlat::State::SCANNING:
+      return "SCANNING";
+  }
+  return "Impossible!";
+}
+
+void PounceBlat::publishStats() {
+  char tmpName[] = "/dev/shm/pounceblat.status.XXXXXX";
+  int tmpFd = mkstemp(tmpName);
+  if (tmpFd == -1) {
+    spdlog::warn("Cannot create temporary status file: {}", strerror(errno));
+    return;
+  }
+  dprintf(tmpFd, "Current state: %s\n", stateName(state_));
+  dprintf(tmpFd, "\n");
+  dprintf(tmpFd, "Motion detected: %u\n", stats_.motion);
+  dprintf(tmpFd, "Runs: %u\n", stats_.runs);
+  dprintf(tmpFd, "Disallowed due to Nazbert: %u\n", stats_.disallowed);
+  dprintf(tmpFd, "Aborted due to Nazbert: %u\n", stats_.aborts);
+
+  if (close(tmpFd) == -1) {
+    spdlog::warn("Error writing temporary status file: {}", strerror(errno));
+    return;
+  }
+
+  if (rename(tmpName, "/dev/shm/pounceblat.status") == -1) {
+    spdlog::warn("Error renaming temporary stats file: {}", strerror(errno));
   }
 }
