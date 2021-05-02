@@ -1,0 +1,9 @@
+[Unit]
+Description=Nazbert is best bert
+After=network.target
+
+[Service]
+ExecStart=/home/pi/nazbert/src/pounceblat -l /tmp/pounceblat.log -d
+
+[Install]
+WantedBy=multi-user.target

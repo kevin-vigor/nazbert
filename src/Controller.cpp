@@ -60,7 +60,7 @@ void Controller::controlThread(EventQueue &eq) {
       break;
     }
 
-    char c;
+    char c = 0;
     while ((rc = read(inFd, &c, 1)) == 1) {
       switch (c) {
         case 'E':
